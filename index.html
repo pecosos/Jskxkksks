@@ -1,0 +1,306 @@
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background-color: #4CAF50;
+      touch-action: none; /* Desactivar desplazamiento táctil */
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Ajustar el tamaño del canvas para dispositivos móviles
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Configuración del campo y elementos
+const field = { width: canvas.width, height: canvas.height };
+const ballRadius = Math.min(canvas.width, canvas.height) * 0.02;
+const playerRadius = Math.min(canvas.width, canvas.height) * 0.03;
+const goalWidth = canvas.height * 0.3;
+const goalDepth = canvas.width * 0.05;
+
+// Definición de porterías
+const blueGoal = { x: 0, y: (field.height - goalWidth) / 2, width: goalDepth, height: goalWidth };
+const redGoal = { x: field.width - goalDepth, y: (field.height - goalWidth) / 2, width: goalDepth, height: goalWidth };
+
+// Estado inicial de la pelota
+let ball = {
+  x: field.width / 2,
+  y: field.height / 2,
+  dx: Math.random() * 4 - 2,
+  dy: Math.random() * 4 - 2,
+  radius: ballRadius,
+  speed: 3, // Velocidad base de la pelota
+  friction: 0.99 // Fricción para simular inercia
+};
+
+// Estado inicial de los jugadores
+let bluePlayer = { 
+  x: field.width * 0.25, 
+  y: field.height / 2, 
+  radius: playerRadius, 
+  color: 'blue', 
+  speed: Math.min(canvas.width, canvas.height) * 0.015,
+  dx: 0, // Velocidad en el eje X
+  dy: 0, // Velocidad en el eje Y
+  friction: 0.95 // Fricción para simular inercia
+};
+let redPlayer = { 
+  x: field.width * 0.75, 
+  y: field.height / 2, 
+  radius: playerRadius, 
+  color: 'red', 
+  speed: Math.min(canvas.width, canvas.height) * 0.06, // Velocidad doble para el jugador rojo
+  dx: 0, 
+  dy: 0, 
+  friction: 0.95 
+};
+
+// Dibujar el campo
+function drawField() {
+  // Campo verde
+  ctx.fillStyle = '#4CAF50';
+  ctx.fillRect(0, 0, field.width, field.height);
+
+  // Portería azul
+  ctx.fillStyle = 'white';
+  ctx.fillRect(blueGoal.x, blueGoal.y, blueGoal.width, blueGoal.height);
+
+  // Portería roja
+  ctx.fillStyle = 'white';
+  ctx.fillRect(redGoal.x, redGoal.y, redGoal.width, redGoal.height);
+}
+
+// Dibujar la pelota
+function drawBall() {
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+  ctx.closePath();
+}
+
+// Dibujar a los jugadores
+function drawPlayers() {
+  function drawPlayer(player) {
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fillStyle = player.color;
+    ctx.fill();
+    ctx.closePath();
+  }
+
+  drawPlayer(bluePlayer);
+  drawPlayer(redPlayer);
+}
+
+// Actualizar posición de la pelota
+function updateBall() {
+  ball.x += ball.dx;
+  ball.y += ball.dy;
+
+  // Aplicar fricción para reducir la velocidad gradualmente
+  ball.dx *= ball.friction;
+  ball.dy *= ball.friction;
+
+  // Rebotar en los bordes superior e inferior
+  if (ball.y + ball.dy > field.height - ball.radius || ball.y + ball.dy < ball.radius) {
+    ball.dy *= -1;
+  }
+
+  // Rebotar en los bordes izquierdo y derecho (excepto las porterías)
+  if (
+    (ball.x + ball.dx < blueGoal.x + blueGoal.width && 
+     (ball.y < blueGoal.y || ball.y > blueGoal.y + blueGoal.height)) ||
+    (ball.x + ball.dx > redGoal.x && 
+     (ball.y < redGoal.y || ball.y > redGoal.y + redGoal.height))
+  ) {
+    ball.dx *= -1;
+  }
+
+  // Asegurarse de que la pelota no atraviese los bordes horizontales
+  if (ball.x - ball.radius < 0) {
+    ball.x = ball.radius;
+    ball.dx *= -1;
+  }
+  if (ball.x + ball.radius > field.width) {
+    ball.x = field.width - ball.radius;
+    ball.dx *= -1;
+  }
+
+  // Detectar colisión con los jugadores
+  function checkCollision(player) {
+    const distX = ball.x - player.x;
+    const distY = ball.y - player.y;
+    const distance = Math.sqrt(distX * distX + distY * distY);
+
+    if (distance < ball.radius + player.radius) {
+      // Calcular ángulo de rebote basado en la posición relativa al jugador
+      const angle = Math.atan2(distY, distX);
+      ball.dx = Math.cos(angle) * ball.speed;
+      ball.dy = Math.sin(angle) * ball.speed;
+
+      // Incrementar la velocidad de la pelota tras cada golpe
+      ball.speed += 0.5; // Aumentar la velocidad
+    }
+  }
+
+  checkCollision(bluePlayer);
+  checkCollision(redPlayer);
+}
+
+// Movimiento estratégico del jugador rojo (BOT)
+function moveRedPlayer() {
+  function moveToTarget(player, targetX, targetY) {
+    const dx = targetX - player.x;
+    const dy = targetY - player.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance > player.speed) {
+      player.dx += (dx / distance) * 0.4; // Acelerar más rápido
+      player.dy += (dy / distance) * 0.4;
+    } else {
+      player.dx = 0; // Detenerse si está cerca del objetivo
+      player.dy = 0;
+    }
+
+    // Limitar la velocidad máxima del jugador
+    const maxSpeed = player.speed;
+    if (Math.abs(player.dx) > maxSpeed) player.dx = Math.sign(player.dx) * maxSpeed;
+    if (Math.abs(player.dy) > maxSpeed) player.dy = Math.sign(player.dy) * maxSpeed;
+
+    // Aplicar fricción para simular inercia
+    player.dx *= player.friction;
+    player.dy *= player.friction;
+
+    // Actualizar posición del jugador
+    player.x += player.dx;
+    player.y += player.dy;
+
+    // Evitar que los jugadores salgan del campo
+    function keepInBounds(player) {
+      if (player.x < player.radius) { player.x = player.radius; player.dx = 0; }
+      if (player.x > field.width - player.radius) { player.x = field.width - player.radius; player.dx = 0; }
+      if (player.y < player.radius) { player.y = player.radius; player.dy = 0; }
+      if (player.y > field.height - player.radius) { player.y = field.height - player.radius; player.dy = 0; }
+    }
+
+    keepInBounds(player);
+  }
+
+  // El jugador rojo defiende su portería y ataca la contraria
+  if (ball.x > field.width / 2) {
+    moveToTarget(redPlayer, ball.x, ball.y); // Atacar la pelota
+  } else {
+    moveToTarget(redPlayer, redGoal.x - 20, field.height / 2); // Defender su portería
+  }
+}
+
+// Control táctil del jugador azul
+let touchStartX = 0;
+let touchStartY = 0;
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const deltaX = touch.clientX - touchStartX;
+  const deltaY = touch.clientY - touchStartY;
+
+  // Mover al jugador azul en función del gesto táctil
+  bluePlayer.x += deltaX;
+  bluePlayer.y += deltaY;
+
+  // Actualizar la posición inicial del toque
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+
+  // Mantener al jugador dentro del campo
+  function keepInBounds(player) {
+    if (player.x < player.radius) { player.x = player.radius; }
+    if (player.x > field.width - player.radius) { player.x = field.width - player.radius; }
+    if (player.y < player.radius) { player.y = player.radius; }
+    if (player.y > field.height - player.radius) { player.y = field.height - player.radius; }
+  }
+
+  keepInBounds(bluePlayer);
+});
+
+// Detectar goles
+function checkGoals() {
+  if (
+    ball.x < blueGoal.x + blueGoal.width &&
+    ball.y > blueGoal.y &&
+    ball.y < blueGoal.y + blueGoal.height
+  ) {
+    alert('¡Gol del jugador rojo!');
+    resetGame();
+  }
+
+  if (
+    ball.x > redGoal.x &&
+    ball.y > redGoal.y &&
+    ball.y < redGoal.y + redGoal.height
+  ) {
+    alert('¡Gol del jugador azul!');
+    resetGame();
+  }
+}
+
+// Reiniciar el juego después de un gol
+function resetGame() {
+  ball.x = field.width / 2;
+  ball.y = field.height / 2;
+  ball.dx = Math.random() * 4 - 2;
+  ball.dy = Math.random() * 4 - 2;
+  ball.speed = 3; // Restablecer la velocidad base de la pelota
+
+  bluePlayer.x = field.width * 0.25;
+  bluePlayer.y = field.height / 2;
+
+  redPlayer.x = field.width * 0.75;
+  redPlayer.y = field.height / 2;
+}
+
+// Bucle principal del juego
+function gameLoop() {
+  ctx.clearRect(0, 0, field.width, field.height);
+
+  drawField();
+  drawBall();
+  drawPlayers();
+
+  updateBall();
+  moveRedPlayer();
+  checkGoals();
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
+```
